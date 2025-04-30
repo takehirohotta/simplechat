@@ -4,6 +4,7 @@ import os
 import boto3
 import re  # 正規表現モジュールをインポート
 from botocore.exceptions import ClientError
+import urllib.request
 
 
 # Lambda コンテキストからリージョンを抽出する関数
@@ -19,6 +20,42 @@ bedrock_client = None
 
 # モデルID
 MODEL_ID = os.environ.get("MODEL_ID", "us.amazon.nova-lite-v1:0")
+
+
+
+def call_api(prompt, max_tokens=512, temperature=0.7, top_p=0.9):
+    
+    api_url = 'https://4da5-35-247-56-25.ngrok-free.app/generate'
+    
+    request_payload = {
+        "prompt": prompt,
+        "max_new_tokens": max_tokens,
+        "do_sample": True,
+        "temperature": temperature,
+        "top_p": top_p
+    }
+    
+    data = json.dumps(request_payload).encode('utf-8')
+    
+    req = urllib.request.Request(
+        api_url,
+        data=data,
+        headers={'Content-Type': 'application/json'},
+        method='POST'
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            response_data = json.loads(response.read().decode('utf-8'))
+            return response_data.get('generated_text', ''), response_data.get('response_time', 0)
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"HTTP Error: {e.code} - {error_body}")
+        raise Exception(f"API Error: {e.code} - {error_body}")
+    except Exception as e:
+        print(f"Exception: {str(e)}")
+        raise Exception(f"Failed to call external API: {str(e)}")
+
 
 def lambda_handler(event, context):
     try:
@@ -53,7 +90,19 @@ def lambda_handler(event, context):
             "role": "user",
             "content": message
         })
-        
+
+        user_message = message
+
+        assistant_response, response_time = call_api(
+            prompt=user_message,
+            max_tokens=64,    
+            temperature=0.7,
+            top_p=0.9
+        )
+
+
+
+        '''
         # Nova Liteモデル用のリクエストペイロードを構築
         # 会話履歴を含める
         bedrock_messages = []
@@ -99,7 +148,7 @@ def lambda_handler(event, context):
         
         # アシスタントの応答を取得
         assistant_response = response_body['output']['message']['content'][0]['text']
-        
+        '''
         # アシスタントの応答を会話履歴に追加
         messages.append({
             "role": "assistant",
